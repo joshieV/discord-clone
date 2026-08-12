@@ -5,6 +5,10 @@ backend/target/
 frontend/node_modules/
 frontend/dist/
 
+# desktop (Electron)
+desktop/node_modules/
+desktop/dist/
+
 # local dev artifacts
 pgdata/
 *.log

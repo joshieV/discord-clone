@@ -16,9 +16,24 @@ A small Discord-style chat app, built as practice material for reading and modif
 ```
 backend/    Spring Boot API (Java 21, Maven)
 frontend/   React + TypeScript app (Vite)
+desktop/    Electron wrapper that runs the app as a native window
 ```
 
-## Running locally
+## Running as a desktop app
+
+`desktop/` wraps the app in an Electron window: on launch it starts the local Postgres instance and the backend jar if they're not already running, waits for the backend to be healthy, then loads the built frontend. There's a portable exe at `desktop/dist/Discord Clone 1.0.0.exe` (not committed — build it yourself, see below) and a Desktop shortcut pointing at it.
+
+To rebuild after backend/frontend changes:
+
+```
+cd backend && mvn clean package -DskipTests
+cd frontend && npm run build
+cd desktop && npm install && npm run dist
+```
+
+Note: `desktop/main.js` hardcodes `D:\discord-clone` as the project root, since the packaged exe can't derive it from its own location (it runs out of an asar archive). If you move the project, update that constant.
+
+## Running locally (without the desktop wrapper)
 
 **Backend** (needs a Postgres instance — see `backend/src/main/resources/application.properties` for the connection URL):
 
