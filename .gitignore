@@ -1,0 +1,13 @@
+# backend (Maven)
+backend/target/
+
+# frontend (Node)
+frontend/node_modules/
+frontend/dist/
+
+# local dev artifacts
+pgdata/
+*.log
+backend.log
+frontend.log
+gh_auth.log
