@@ -1,8 +1,29 @@
-const { app, BrowserWindow, dialog } = require("electron");
-const path = require("path");
 const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+// Written with appendFileSync (sync, guaranteed-writable, no dependency on
+// Electron/app.getPath being ready yet) so that even a crash before the app
+// is fully initialized still leaves a trace.
+const EARLY_LOG = path.join(os.tmpdir(), "discordclone-early.log");
+function earlyLog(...args) {
+  try {
+    fs.appendFileSync(EARLY_LOG, `[${new Date().toISOString()}] ${args.join(" ")}\n`);
+  } catch {
+    // nothing further we can do if even this fails
+  }
+}
+process.on("uncaughtException", (err) => earlyLog("UNCAUGHT EXCEPTION:", String(err), err && err.stack));
+process.on("unhandledRejection", (reason) => earlyLog("UNHANDLED REJECTION:", String(reason)));
+
+const { app, BrowserWindow, dialog } = require("electron");
 const { spawn } = require("child_process");
 const net = require("net");
+
+// Explicit rather than left to default resolution: app.getPath("userData")
+// otherwise depends on package.json's "name" field vs productName in ways
+// that differed between dev, --dir, and NSIS-installed builds during testing.
+app.setName("Discord Clone");
 
 // process.resourcesPath only exists once packaged; in dev (npm start) fall back
 // to the staged build-resources/ folder next to this file so the same code path
@@ -16,19 +37,33 @@ const PG_BIN = path.join(RESOURCES_DIR, "pgsql", "bin");
 const PG_CTL = path.join(PG_BIN, "pg_ctl.exe");
 const INITDB = path.join(PG_BIN, "initdb.exe");
 const CREATEDB = path.join(PG_BIN, "createdb.exe");
+const PG_PORT = "5433";
 
 // Postgres data has to live somewhere writable regardless of where the app is
 // installed (e.g. Program Files is read-only for normal users), so it goes in
 // the per-user app-data folder rather than next to the bundled binaries.
-const DATA_DIR = path.join(app.getPath("userData"), "pgdata");
-const PG_LOG = path.join(app.getPath("userData"), "pg.log");
-const APP_LOG_PATH = path.join(app.getPath("userData"), "app.log");
+const USER_DATA = app.getPath("userData");
+const DATA_DIR = path.join(USER_DATA, "pgdata");
+const PG_LOG = path.join(USER_DATA, "pg.log");
+const APP_LOG_PATH = path.join(USER_DATA, "app.log");
 const FRONTEND_INDEX = path.join(__dirname, "..", "frontend", "dist", "index.html");
 const FRONTEND_INDEX_PACKAGED = path.join(RESOURCES_DIR, "frontend", "index.html");
 
+// mkdir before opening the stream: on a truly fresh install nothing has
+// created USER_DATA yet, and createWriteStream's ENOENT surfaces async, past
+// any try/catch around this line — it becomes an unhandled 'error' event
+// that killed the process silently before this fix (no dialog, no log).
+fs.mkdirSync(USER_DATA, { recursive: true });
 const appLog = fs.createWriteStream(APP_LOG_PATH, { flags: "a" });
+appLog.on("error", (err) => earlyLog("appLog stream error:", String(err)));
 function log(...args) {
-  appLog.write(`[${new Date().toISOString()}] ${args.join(" ")}\n`);
+  const line = `[${new Date().toISOString()}] ${args.join(" ")}`;
+  earlyLog(line);
+  try {
+    appLog.write(line + "\n");
+  } catch (err) {
+    earlyLog("log() write failed:", String(err));
+  }
 }
 
 let backendProcess = null;
@@ -83,8 +118,8 @@ function run(cmd, args) {
 }
 
 async function ensurePostgres() {
-  log("checking postgres on 5433...");
-  if (await isPortOpen(5433)) {
+  log("checking postgres on", PG_PORT, "...");
+  if (await isPortOpen(PG_PORT)) {
     log("postgres already running");
     return;
   }
@@ -94,17 +129,20 @@ async function ensurePostgres() {
     log("no existing data dir, running initdb into", DATA_DIR);
     fs.mkdirSync(DATA_DIR, { recursive: true });
     await run(INITDB, ["-D", DATA_DIR, "-U", "postgres", "--auth=trust", "-E", "UTF8"]);
-    fs.appendFileSync(path.join(DATA_DIR, "postgresql.conf"), "\nport = 5433\n");
   }
 
-  log("starting postgres via", PG_CTL);
-  await run(PG_CTL, ["-D", DATA_DIR, "-l", PG_LOG, "start"]);
-  await waitForPort(5433, 15000);
+  // Port passed via -o rather than editing postgresql.conf: guaranteed to
+  // apply on every start regardless of what's already in the config file,
+  // instead of depending on a one-time text append during initdb having
+  // worked and not been duplicated/overridden by anything later.
+  log("starting postgres via", PG_CTL, "on port", PG_PORT);
+  await run(PG_CTL, ["-D", DATA_DIR, "-o", `-p ${PG_PORT}`, "-l", PG_LOG, "start"]);
+  await waitForPort(PG_PORT, 15000);
   log("postgres is up");
 
   if (firstRun) {
     log("creating discordclone database");
-    await run(CREATEDB, ["-U", "postgres", "-h", "127.0.0.1", "-p", "5433", "discordclone"]);
+    await run(CREATEDB, ["-U", "postgres", "-h", "127.0.0.1", "-p", PG_PORT, "discordclone"]);
   }
 }
 
@@ -150,6 +188,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  earlyLog("whenReady fired");
   log("app ready, packaged:", app.isPackaged, "resourcesDir:", RESOURCES_DIR);
   createWindow();
   try {
