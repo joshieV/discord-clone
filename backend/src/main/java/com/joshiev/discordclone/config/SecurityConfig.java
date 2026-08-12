@@ -56,7 +56,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        // Origin patterns rather than a fixed list: the frontend is served both from
+        // http://localhost:5173 (dev) and file:// (packaged desktop app, which sends
+        // "Origin: null"). Backend only ever binds to 127.0.0.1, so this isn't exposed
+        // to the outside network either way.
+        config.setAllowedOriginPatterns(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

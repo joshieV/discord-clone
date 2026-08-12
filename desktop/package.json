@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis"
   },
   "author": "",
   "license": "ISC",
@@ -19,8 +19,21 @@
     "appId": "com.joshiev.discordclone",
     "productName": "Discord Clone",
     "files": ["main.js"],
+    "extraResources": [
+      { "from": "build-resources/jre", "to": "jre" },
+      { "from": "build-resources/backend", "to": "backend" },
+      { "from": "build-resources/pgsql", "to": "pgsql" },
+      { "from": "build-resources/frontend", "to": "frontend" }
+    ],
     "win": {
-      "target": "portable"
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

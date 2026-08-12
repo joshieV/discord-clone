@@ -8,6 +8,7 @@ frontend/dist/
 # desktop (Electron)
 desktop/node_modules/
 desktop/dist/
+desktop/build-resources/
 
 # local dev artifacts
 pgdata/
